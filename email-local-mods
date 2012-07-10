@@ -1,0 +1,107 @@
+#!/bin/bash
+
+THIS_FILE_DIR=$(dirname $0)
+source $THIS_FILE_DIR/general_functions.sh
+
+set -e
+
+usage=$(
+    <<EOF
+$0 [OPTION]
+-d                 use flag to delete resulting mod tarball
+-b EMAIL_BODY      body of email if you'd like to include one
+-f TARBALL_FILE    overrides tarball creation and just emails file specified by -f
+-s EMAIL_SUBJECT   overrides default subject
+-D DRY_RUN         use flag to print resulting command and produce tarball.  does not email recipient
+EOF
+)    
+
+# Does it have a recipient list? aka the first argument is NOT a switch or a flag
+if [ `echo "$1" | grep -oP "^-"` ]; then
+    # recipient list is not passed in.  
+    GETOPTS_LIST="$*"
+    RECIPIENT_LIST=    
+else
+    # recipient list is passed in
+    GETOPTS_LIST=$(echo "$*" | sed "s^$1^^")
+    RECIPIENT_LIST=$1
+fi
+
+KEEP_TARBALL=1
+EMAIL_BODY=
+TARBALL_FILE=
+EMAIL_SUBJECT=
+DRY_RUN=
+
+while getopts "ahDdb:f:s:" OPTION $GETOPTS_LIST; do
+    case "$OPTION" in
+	d) unset KEEP_TARBALL ;;
+	b)		
+	    EMAIL_BODY="$OPTARG"
+	    if [ -f $EMAIL_BODY ]; then
+		EMAIL_BODY=$(cat $EMAIL_BODY)
+	    fi
+	    ;;
+	f) TARBALL_FILE="$OPTARG" ;;
+	s) EMAIL_SUBJECT="$OPTARG" ;;
+	D) DRY_RUN=1 ;;
+	*|h)
+	    echo $usage
+	    exit		
+	    ;;
+    esac
+done
+
+if [[ ! ! "$RECIPIENT_LIST" ]]; then
+    if [[ ! "$DRY_RUN" ]]; then
+	echo "Exiting: recipient list (first argument not defined). If you want to do a dry run, pass in -D flag"
+	echo $usage
+	exit 1
+    else
+	RECIPIENT_LIST=snailcrusher49@grahamcakes.com,hankthepainbringer@grahamcakes.com
+    fi
+fi
+
+if [ ! "$(which uuencode)" ]; then
+    echo "Exiting: uuencode. Run sudo apt-get install sharutils to get uuencode"
+    exit 1
+fi
+
+if [ ! "$(which mail)" ]; then
+    echo "Exiting: mail not installed"
+    exit 1
+fi
+
+# OK, finally on to business
+if [ ! $TARBALL_FILE ]; then
+    unset LOCAL_MOD_TARBALL_NAME
+    tar-local-mods
+    
+    retval=$?
+    
+    if [ 0 -ne $retval ]; then
+        echo "Exiting: svn st returned code of ${retval}"
+	exit $retval
+    fi        
+    
+    if [ ! $LOCAL_MOD_TARBALL_NAME ]; then
+        echo "Exiting: tarball name not defined"
+        exit 1
+    fi
+    
+    TARBALL_FILE=$LOCAL_MOD_TARBALL_NAME
+fi
+
+if [ ! $EMAIL_SUBJECT ]; then 
+    EMAIL_SUBJECT="Local mods from $(whoami)@$(hostname): $(echo $LOCAL_MOD_TARBALL_NAME | sed 's@.tar@@g')"
+fi
+
+echo "(echo $EMAIL_BODY; uuencode $TARBALL_FILE $TARBALL_FILE) | mail -s "$EMAIL_SUBJECT" $RECIPIENT_LIST"
+
+if [ ! $DRY_RUN ]; then
+    (echo $EMAIL_BODY; uuencode $TARBALL_FILE $TARBALL_FILE) | mail -s "$EMAIL_SUBJECT" $RECIPIENT_LIST
+fi
+
+if [ ! $KEEP_TARBALL ]; then
+    rm $TARBALL_FILE
+fi
