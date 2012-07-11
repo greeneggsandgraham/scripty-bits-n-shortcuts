@@ -44,7 +44,7 @@
 ;; (slime-setup) 
 
 ; groovy mode
-(load "~/.emacs.d/init-groovy.el")
+; (load "~/.emacs.d/init-groovy.el")
 
 ; multimode and aspx mode
 ;(load "~/.emacs.d/multi-mode.el")
